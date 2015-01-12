@@ -42,6 +42,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ChannelPriority.cs" />
+    <Compile Include="CodeGenException.cs" />
     <Compile Include="Declarations.cs" />
     <Compile Include="Expression.cs" />
     <Compile Include="ExpressionGenerator.cs" />

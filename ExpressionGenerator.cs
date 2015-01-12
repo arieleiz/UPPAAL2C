@@ -36,7 +36,7 @@ namespace uppaal2c
         {
             VarDecl vd = _decls.getVar(ur.VarName);
             if(vd == null)
-                throw new Exception(String.Format("Unknown variable {0}!", ur.VarName));
+                throw new CodeGenException(String.Format("Unknown variable {0}!", ur.VarName));
 
             string vname;
             if(vd.IsArray)
@@ -45,7 +45,7 @@ namespace uppaal2c
                     || ur.Expr.Func != Expression.Funcs.ArrayIndex
                     || ur.Expr.First.Type != Expression.ExpType.Var)
                 {
-                    throw new Exception(String.Format("Array variable {0} not accessed by index!", vd.Name));
+                    throw new CodeGenException(String.Format("Array variable {0} not accessed by index!", vd.Name));
                 }
                 vd = _decls.getVar(ur.Expr.First.Var);
                 vname = String.Format("{0}[{1}]", _namer(vd), generate(ur.Expr.Second));
@@ -63,9 +63,28 @@ namespace uppaal2c
 
         public string generate(Expression e)
         {
-            return e.getCodeString((str) => String.Format("(int){0}.{1}", _stateStructName, _namer(_decls.getVar(str))),
-                                   validateOnGenerate
-                                    );
+            // XXX mutex!
+            return e.getCodeString((str) => String.Format("{0}({1}.{2})", 
+                                        getGetter(_decls.getVar(str)),
+                                        _stateStructName, 
+                                        _namer(_decls.getVar(str)) 
+                                        ),
+                                    validateOnGenerate);
+        }
+
+        private string getGetter(VarDecl vd)
+        {
+            switch(vd.Type.Type)
+            {
+                case VarType.Channel:
+                    throw new CodeGenException("Channels cannot be used as variables!");
+                case VarType.Clock:
+                    return "_U2C_GET_CLOCK";
+                case VarType.Int:
+                    return "_U2C_GET_INT";
+                default:
+                    throw new CodeGenException("Unknown variable type!");
+            }
         }
 
         private void validateOnGenerate(Expression e)
@@ -77,19 +96,19 @@ namespace uppaal2c
             {
                 case Expression.Funcs.UniPlusPlusPre:
                     if (e.First.Type != Expression.ExpType.Var)
-                        throw new Exception("'++' operator can only be applied to a variable.");
+                        throw new CodeGenException("'++' operator can only be applied to a variable.");
                     break;
                 case Expression.Funcs.UniMinusMinusPre:
                     if (e.First.Type != Expression.ExpType.Var)
-                        throw new Exception("'--' operator can only be applied to a variable.");
+                        throw new CodeGenException("'--' operator can only be applied to a variable.");
                     break;
                 case Expression.Funcs.UniPlusPlusPost:
                     if (e.First.Type != Expression.ExpType.Var)
-                        throw new Exception("'++' operator can only be applied to a variable.");
+                        throw new CodeGenException("'++' operator can only be applied to a variable.");
                     break;
                 case Expression.Funcs.UniMinusMinusPost:
                     if (e.First.Type != Expression.ExpType.Var)
-                        throw new Exception("'--' operator can only be applied to a variable.");
+                        throw new CodeGenException("'--' operator can only be applied to a variable.");
                     break;
             }
         }

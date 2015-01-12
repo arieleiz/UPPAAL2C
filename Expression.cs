@@ -761,7 +761,7 @@ namespace uppaal2c
                     data =  Value.ToString();
                     break;
                 case ExpType.ConstBool:
-                    data = (Value != 0) ? "B_TRUE" : "B_FALSE";
+                    data = (Value != 0) ? "U2C_TRUE" : "U2C_FALSE";
                     break;
 
                 case ExpType.Var:

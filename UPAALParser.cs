@@ -55,7 +55,6 @@ namespace uppaal2c
         {
             try
             {
-                Console.WriteLine("  Parsing template ...");
                 TemplateState state = new TemplateState();
                 XmlNodeList subnodes;
 
@@ -66,13 +65,13 @@ namespace uppaal2c
                 if(_templates.Count > 0 && !_templates.Contains(state._name))
                     return null;
 
+                Console.WriteLine("Parsing template: " + state._name);
+
                 XmlNode decnode = node.SelectSingleNode("./declaration");
                 if (decnode != null)
                     state._declarations = parseDeclarations(getElementText(decnode), globaldecls);
                 else
                     state._declarations = new Declarations() { Parent = globaldecls };
-
-                Console.WriteLine("     Name: " + state._name);
 
                 subnodes = node.SelectNodes("./location");
                 if (subnodes != null)
@@ -130,7 +129,7 @@ namespace uppaal2c
         }
         private StateTransition parseTransition(XmlElement node, TemplateState state)
         {
-            Console.WriteLine("    Parsing transition ...");
+            //Console.WriteLine("    Parsing transition ...");
 
             string id = node.GetAttribute("id");
             if (id == null)
@@ -185,7 +184,7 @@ namespace uppaal2c
 
         private StateNode parseNode(XmlElement node, Declarations decls)
         {
-            Console.WriteLine("    Parsing node ...");
+            //Console.WriteLine("    Parsing node ...");
 
             string id = node.GetAttribute("id");
             if(id == null)
@@ -210,7 +209,7 @@ namespace uppaal2c
 
         private Rule[] parseRules(XmlElement node, string pname, Declarations decls)
         {
-            Console.WriteLine("    Parsing rules ...");
+            //Console.WriteLine("    Parsing rules ...");
 
             XmlNodeList nodes = node.SelectNodes("./label");
             List<Rule> rules = new List<Rule>();
@@ -305,7 +304,7 @@ namespace uppaal2c
 
         private Declarations parseDeclarations(string s, Declarations parent)
         {
-            Console.WriteLine("     Parsing declarations ...");
+            //Console.WriteLine("     Parsing declarations ...");
             Scanner scanner = new Scanner(genStreamFromString(s));
             Parser parser = new Parser(scanner);
             parser.decls.Parent = parent;

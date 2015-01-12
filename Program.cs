@@ -62,7 +62,7 @@ namespace uppaal2c
                 {
                     string fname = args[1].Substring(GENLIST.Length);
                     if(fname.Equals(args[0], StringComparison.InvariantCultureIgnoreCase))
-                        throw new Exception("List file name equal to XML name!");
+                        throw new ApplicationException("List file name equal to XML name!");
 
                     File.WriteAllLines(fname, m.Templates.Select(t => t.Name));
                     Console.WriteLine("Generated: " + fname);

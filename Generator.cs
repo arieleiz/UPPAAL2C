@@ -25,17 +25,23 @@ namespace uppaal2c
 
         public void generate(string outdir)
         {
-            _sb = new StringBuilder();
-            _isSource = false;
-            createOutputFile(Path.Combine(outdir, "Model.h"));
-            _sb = new StringBuilder();
-            _isSource = true;
-            createOutputFile(Path.Combine(outdir, "Model.cpp"));
+            lock (this)
+            {
+                createOutputFile(Path.Combine(outdir, "model.h"), false);
+                createOutputFile(Path.Combine(outdir, "model.c"), true);
+
+                string mainpath = Path.Combine(outdir, "main.c");
+                if (!File.Exists(mainpath))
+                    createMainFile(mainpath);
+                else
+                    Console.WriteLine(String.Format("Skipping {0}, already exists.", mainpath));
+            }
         }
 
-        private void createOutputFile(string path)
+        private void createOutputFile(string path, bool isSource)
         {
-            Console.WriteLine(String.Format("Generating {0} ...", path ));
+            _isSource = isSource;
+            _sb = new StringBuilder();
 
             if (!_isSource)
                 app("#pragma once");
@@ -44,15 +50,16 @@ namespace uppaal2c
             app();
             if(_isSource)
             {
-                app("#include \"Model.h\"");
-                app("using namespace ModelImpl;");
+                app("#include \"model.h\"");
             }
             else
             {
-                app("#include \"ModelImpl.h\"");
+                app("#include \"uppaal2c.h\"");
             }
             app();
-            app("namespace Model {{");
+            app("#ifdef __cplusplus");
+            app("extern \"C\" {{ ");
+            app("#endif");
 
             app("// Channels");
             foreach (var v in _model.Declarations.getVarsByType(VarType.Channel))
@@ -76,10 +83,19 @@ namespace uppaal2c
             }
 
             app();
-            app("}} // namespace" );
+            app("#ifdef __cplusplus");
+            app("}} // extern \"C\" ");
+            app("#endif");
+
 
             FormatTemplateList();
 
+            writeOutput(path);
+        }
+
+        private void writeOutput(string path)
+        {
+            Console.WriteLine(String.Format("Generating {0} ...", path));
             using (StreamWriter sw = new StreamWriter(path))
             {
                 sw.Write(_sb.ToString());
@@ -129,7 +145,7 @@ namespace uppaal2c
                 if (_isSource)
                 {
                     app();
-                    app("ModelImpl::SYNCHRONIZATION_CHANNEL* const {0}_ARRAY[] = ", name);
+                    app("U2C_SYNCHRONIZATION_CHANNEL* const {0}_ARRAY[] = ", name);
                     app("    {{");
                     for (int i = v.ArrLow; i < (v.ArrLow + v.ArrLength); ++i)
                         app("        &{0}{1},", name, String.Format("_{0}", i));
@@ -150,7 +166,7 @@ namespace uppaal2c
                 app();
                 app("const SYNCHRONIZATION_CHANNEL_DATA {0}{1}_DATA = // {2}", name, postfix, v.NiceName());
 	            app("    {{");
-		        app("        DBGSTR(\"{0}[{1}]\"),	// name", v.NiceName(), postfix.TrimStart('_'));
+		        app("        DBG_FIELD(\"{0}[{1}]\")	// name", v.NiceName(), postfix.TrimStart('_'));
 		        app("        {0},				// urgent", formatBool(v.Type.Urgent));
 		        app("        {0},				// broadcast", formatBool(v.Type.Broadcast));
                 app("        &{0},              // state", String.Format("{0}{1}_STATE", name, postfix));
@@ -166,7 +182,7 @@ namespace uppaal2c
             }
             else 
             {
-                app("extern ModelImpl::SYNCHRONIZATION_CHANNEL {0}{1}; // {2}", name, postfix, v.NiceName());
+                app("extern U2C_SYNCHRONIZATION_CHANNEL {0}{1}; // {2}", name, postfix, v.NiceName());
             }
         }
 
@@ -197,7 +213,7 @@ namespace uppaal2c
 
             int val;
             if (!decl.getExprValue(vd.Expr, out val))
-                throw new Exception(String.Format("Cannot use non const variable!"));
+                throw new CodeGenException(String.Format("Cannot use non const variable!"));
 
             app("        {0}({1}),", name, val);
         }
@@ -312,7 +328,7 @@ namespace uppaal2c
 
                 app("const TRANSITION_ENTRY_DATA {0}_DATA =", name);
                 app("    {{");
-                app("        DBGSTR(\"{0}\"),	// name", st.Name);
+                app("        DBG_FIELD(\"{0}\")	// name", st.Name);
                 app("        &{0},				// target", getUniqueName(st.Target));
                 app("        {0},				// receive", getSyncChannel(t, st, SyncRule.Direction.Receive));
                 app("        {0},				// send", getSyncChannel(t, st, SyncRule.Direction.Send));
@@ -331,7 +347,7 @@ namespace uppaal2c
             }
             else
             {
-                app("extern ModelImpl::TRANSITION_ENTRY {0};", name);
+                app("extern U2C_TRANSITION_ENTRY {0};", name);
             }
         }
 
@@ -356,7 +372,7 @@ namespace uppaal2c
 
                 app("const STATE_ENTRY_DATA {0}_DATA =", name);
                 app("    {{");
-                app("        DBGSTR(\"{0}\"),	// name", sn.Name);
+                app("        DBG_FIELD(\"{0}\")	// name", sn.Name);
                 app("        (TRANSITION_ENTRY* const*)&{0}_OUT,	// target", name);
                 app("        {0}, // mode", getModeString(sn));
                 app("        {0}, // guard", guard_name);
@@ -373,7 +389,7 @@ namespace uppaal2c
             }
             else
             {
-                app("extern ModelImpl::STATE_ENTRY {0};", name);
+                app("extern U2C_STATE_ENTRY {0};", name);
             }
         }
 
@@ -399,7 +415,7 @@ namespace uppaal2c
 
                 app("const PROCESS_ENTRY_DATA {0}_DATA = ", name);
                 app("    {{");
-                app("        DBGSTR(\"{0}\"),	// name", name);
+                app("        DBG_FIELD(\"{0}\")	// name", name);
                 //app("        (STATE_ENTRY* const*)&{0}_STATE_TBL,	// states", name);
                 app("        &{0}, // initState", getUniqueName(t.Initial));
                 app("        &{0}_THREAD, // threadptr", name);
@@ -427,8 +443,8 @@ namespace uppaal2c
             }
             else
             {
-                app("extern ModelImpl::PROCESS_ENTRY {0};", name);
-                app("extern ModelImpl::PROCESS_ENTRY_STATE {0}_STATE;", name);
+                app("extern U2C_PROCESS_ENTRY {0};", name);
+                app("extern U2C_PROCESS_ENTRY_STATE {0}_STATE;", name);
                 app();
             }
         }
@@ -438,43 +454,14 @@ namespace uppaal2c
             if (_isSource)
             {
                 int cnt = _model.Templates.Length;
-                app("namespace Model {{");
-                app("volatile PROCESS_ENTRY_STATE* PROCESS_LIST[] =");
+                app("volatile PROCESS_ENTRY_STATE* U2C_PROCESS_LIST[] =");
                 app("{{");
                 for(int i = 0; i < cnt; ++ i)
                     app("   NULL,");
                 app("    NULL");
                 app("}};");
-                app("}}");
                 app();
-                app("namespace ModelImpl {{");
-                app("volatile PROCESS_ENTRY_STATE** PROCESS_LIST = ::Model::PROCESS_LIST;");
                 app("int MAX_PROCESS_LIST = {0};", cnt);
-                app("SYNCHRONIZATION_CHANNEL** ALL_CHANNELS = ::Model::ALL_CHANNELS;");
-                app("}}");
-                app();
-            }
-            else
-            {
-                app();
-                app("// initialize the dispatcher:");
-                app("//    ModelImpl::Dispatcher disp;");
-                app("//    disp.set_clock_multiplier(1000 /*us*/);");
-                app("//    #ifdef DISPATCH_DEBUG");
-                app("//    disp.init_debug(&pc);");
-                app("//    #endif");
-                app("//");
-                app("// add events. examples:");
-                app("//    disp.set_channel_action(&Model::Template_CHANNEL_VAR_led, LED1, ModelImpl::SendChannelModePulseUp, 250000);");
-	            app("//    disp.set_channel_action(&Model::Template_CHANNEL_VAR_manual, LED1, ModelImpl::SendChannelModeToggle);");
-                app("//    disp.set_receive_input(&Model::GLOBAL_CHANNEL_VAR_press, p7, ModelImpl::ReceiveChannelInterruptRise);");
-                app("//");
-                app("// Tip: use just the templates you want in the code:");
-                foreach (Template t in _model.Templates)
-                    app("//    disp.add_process(&Model::{0}_STATE);", getUniqueName(t));
-                app("//");
-                app("// and finally run:");
-                app("//    disp.run();");
                 app();
             }
         }
@@ -494,26 +481,26 @@ namespace uppaal2c
                 case Expression.ExpType.Func:
                     // might be array/range
                     if(r.Expr.Func != Expression.Funcs.ArrayIndex)
-                        throw new Exception("Only array dereferencing allowed on channels!");
+                        throw new CodeGenException("Only array dereferencing allowed on channels!");
                     if(r.Expr.First.Type != Expression.ExpType.Var)
-                        throw new Exception("Synchronization rule must be a channel!");
+                        throw new CodeGenException("Synchronization rule must be a channel!");
                     int idx;
                     if(!t.Declarations.getExprValue(r.Expr.Second, out idx))
-                        throw new Exception("Channel array index must be a constant!");
+                        throw new CodeGenException("Channel array index must be a constant!");
                     vd  = t.Declarations.getVar(r.Expr.First.Var);
                     if(vd == null || vd.Type.Type != VarType.Channel)
-                        throw new Exception(String.Format("Could not find '{0}' in declarations for template '{1}' or globally!", r.Expr.First.Var, t.Name));
+                        throw new CodeGenException(String.Format("Could not find '{0}' in declarations for template '{1}' or globally!", r.Expr.First.Var, t.Name));
                     return String.Format("{0}_ARRAY[{1}]", getUniqueName(vd), idx - vd.ArrLow);
 
                 case Expression.ExpType.Var:
                     vd  = t.Declarations.getVar(r.Expr.Var);
                     if(vd == null || vd.Type.Type != VarType.Channel)
-                        throw new Exception(String.Format("Could not find '{0}' in declarations for template '{1}' or globally!", r.Expr.Var, t.Name));
+                        throw new CodeGenException(String.Format("Could not find '{0}' in declarations for template '{1}' or globally!", r.Expr.Var, t.Name));
 
                     return String.Format("&{0}", getUniqueName(vd));
 
                 default:
-                    throw new Exception("Synchronization rule must be a channel");
+                    throw new CodeGenException("Synchronization rule must be a channel");
             }
         }
 
@@ -533,7 +520,7 @@ namespace uppaal2c
                 case NodeMode.Commited:
                     return "StateCommited";
             }
-            throw new Exception("Unknown mode!");
+            throw new CodeGenException("Unknown mode!");
         }
 
         private string getVarDeclName(VarDecl v, string template)
@@ -571,6 +558,58 @@ namespace uppaal2c
             _sb.AppendLine();
         }
 
+        private void createMainFile(string outpath)
+        {
+            _sb = new StringBuilder();
+            app("#include \"uppal2c.h\"");
+            app("#include \"model.h\"");
+            app();
+            app("static void init_inputs();");
+            app("static void init_outputs();");
+            app("static void init_callbacks();");
+            app("static void init_tasks();");
+            app();
+            app("int main (void)"); 
+            app("{{");
+            app("\tu2c_set_clock_multiplier(1000 /*us*/);");
+            app();
+            app("\tinit_inputs();");
+            app("\tinit_outputs();");
+            app("\tinit_callbacks();");
+            app("\tinit_tasks();");
+            app("\tu2c_run();");
+            app();
+            app("}}");
+            app();
+            app("static void init_inputs()");
+            app("{{");
+            app("\t// uncomment and edit required hardware inputs");
+            app("\t//u2c_set_receive_input(GLOBAL_CHANNEL_VAR_m_BolusReq, p9, PullUp, U2C_ReceiveChannelInterruptRise);");
+            app("}}");
+            app();
+            app("static void init_outputs()");
+            app("{{");
+            app("\t// uncomment and edit required hardware outputs");
+            app("\t//u2c_set_channel_action(GLOBAL_CHANNEL_VAR_c_StartBolus, p5, U2C_SendChannelModePulseUp, 1000);");
+            app("}}");
+            app();
+            app("static void init_callbacks()");
+            app("{{");
+            app("\t// uncomment and edit required process callbacks");
+            app("\t// uncomment and edit required state callbacks");
+//            app("\t//disp.set_state_enter_cb(&Model::pump_STATE_Alarming, blabla, NULL);
+            app("\t// uncomment and edit required transition callbacks");
+            app("}}");
+            app();
+            app("static void init_tasks()");
+            app("{{");
+            app("\tu2c_add_task(U2C_TASK_OBJECT(pump));");
+            app("}}");
+            app();
+
+            writeOutput(outpath);
+        }
+
         private Model _model;
         private StringBuilder _sb;
         private bool _isSource;
@@ -578,3 +617,4 @@ namespace uppaal2c
         const string StateStructName = "SystemVariables";
     }
 }
+
