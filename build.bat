@@ -1,0 +1,1 @@
+coco UPPAALDecls.ATG 

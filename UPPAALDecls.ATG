@@ -1,0 +1,292 @@
+/*
+*  UPPAAAL2C (c) 2014 Ariel Eizenberg - arieleiz@seas.upenn.edu.
+*
+*    This file is part of UPPAAAL2C. You can redistribute it and/or modify
+*    it under the terms of the Academic Free License 3.0
+*	  (http://opensource.org/licenses/AFL-3.0).
+*
+*/
+
+using System.Collections;
+using System.Collections.Generic;
+using System.Text;
+using System.Globalization;
+
+COMPILER UPPAALDECL
+	public uppaal2c.Declarations decls = new uppaal2c.Declarations();
+
+bool IsChanPriority()
+{
+	scanner.ResetPeek();
+	var x = scanner.Peek();
+	if(x.kind == _priority)
+		return true;
+	return false;
+}
+
+CHARACTERS
+	  letter = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_".
+	  digit = "0123456789".
+	  nzdigit = "123456789".
+	  hexdigit = "0123456789ABCDEF".
+	  cr  = '\r'.
+	  lf  = '\n'.
+	  tab = '\t'.
+
+TOKENS
+  ident  = letter {letter | digit}.
+  number = ( '0' | nzdigit {digit} ).
+  hexnumber = '0' 'x' hexdigit { hexdigit }.
+  priority = "priority".
+  false = "false".
+  true = "true".
+
+COMMENTS FROM "/*" TO "*/" NESTED
+COMMENTS FROM "//" TO lf
+
+IGNORE cr + lf + tab
+
+PRODUCTIONS
+
+UPPAALDECL				
+  = { Declaration }
+.
+
+Declaration			     
+= 
+    ( "typedef" Typedef 
+	| IF(IsChanPriority()) "chan" priority ChanPriorityDecl 
+	| VarDecl  
+	) ';'
+.
+
+Typedef						(. string name; uppaal2c.TypeDecl typdecl; .)  
+= 
+  TypeDecl<out typdecl>  
+  Ident<out name>                 (. decls.Add(new uppaal2c.TypedefDecl() { Name = name, Type = typdecl } ); .)
+.
+
+VarDecl
+=						   (. uppaal2c.TypeDecl type;  .)
+	 TypeDecl<out type>
+	 VarNameDecl<type>
+	 { ',' VarNameDecl<type> }
+.
+
+VarNameDecl<uppaal2c.TypeDecl type> 
+= 					   (. string name; uppaal2c.Expression arg1 = null, arg2 = null; .)
+	 Ident<out name>		   (. uppaal2c.VarDecl vardecl = new uppaal2c.VarDecl(name, type); decls.Add(vardecl); .)
+		[ 
+		'[' Expression<out arg1> ']'  
+				(. 
+					int low = 0, length = 0;
+					if(!decls.getArrSizeValue(arg1, out low, out length))
+						throw new FatalError("Could not calculate array size!");
+					vardecl.IsArray = true;
+					vardecl.ArrLow = low; 
+					vardecl.ArrLength = length; 
+				.)
+		]
+     [ 
+	 '='
+	  Expression<out arg2>	 (. vardecl.Expr = arg2; vardecl.HasExpr = true; .)
+	 ]	
+.
+	
+TypeDecl<out uppaal2c.TypeDecl data>			(. data = new uppaal2c.TypeDecl(); string tname; uppaal2c.Expression arg1 = null, arg2 = null; .)
+=
+	{ "const"			(. data.Const = true; .)
+	  | "urgent"		(. data.Urgent = true; .)
+	  | "broadcast"		(. data.Broadcast = true; .)
+	  | "meta"			
+	  }  
+	( "int"             (. data.Type = uppaal2c.VarType.Int; .)
+	  | "bool"          (. data.Type = uppaal2c.VarType.Int; .)
+	  | "clock"			(. data.Type = uppaal2c.VarType.Clock; .)
+	  | "chan"			(. data.Type = uppaal2c.VarType.Channel; .)
+	  | Ident<out tname>   (. data = decls.normalizeType(data, tname); .)
+	) [ 
+	    '[' Expression<out arg1> ',' Expression<out arg2> ']' 
+				(. 
+					int low, high;
+					if(!decls.getExprValue(arg1, out low) || !decls.getExprValue(arg2, out high))
+						throw new uppaal2c.ParseException("Array ranges must evaluate to consts!");
+					data.SetRange(low, high); 
+				.)
+	  ]                 
+.
+
+Expression<out uppaal2c.Expression expr>
+=									(. uppaal2c.Expression arg1 = null; .)
+  LogWordOrExpr<out arg1>           (. expr = arg1; .)
+.
+	
+LogWordOrExpr  <out uppaal2c.Expression expr> (. uppaal2c.Expression arg1 = null, arg2 = null; .)
+= 
+	LogWordAndExpr<out arg1>		(. expr = arg1; .)
+	[ "or"	LogWordAndExpr<out arg2> 		(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.LogicalOr, arg1, arg2);  .)
+	]
+.
+
+LogWordAndExpr <out uppaal2c.Expression expr> (. uppaal2c.Expression arg1 = null, arg2 = null; .)
+= (
+	LogWordNotExpr<out arg1>			(. expr = arg1; .)
+	[ "and" LogWordNotExpr<out arg2>	(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.LogicalAnd, arg1, arg2); .)
+	]
+  )
+.
+
+
+LogWordNotExpr <out uppaal2c.Expression expr> (. uppaal2c.Expression arg1 = null; expr = null; .)
+= (
+	"not" CondExpr<out arg1>  (. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.LogicalNot, arg1); .)
+	| CondExpr<out arg1> (. expr = arg1; .)
+  )
+.
+
+CondExpr<out uppaal2c.Expression expr> (. uppaal2c.Expression arg1 = null, arg2 = null, arg3 = null; .)
+= LogOrExpr<out arg1>			(. expr = arg1; .)
+  [
+	'?' CondExpr<out arg2> ':' CondExpr<out arg3> (. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.IfThenElse, arg1, arg2, arg3); .)
+  ] 
+.
+
+LogOrExpr  <out uppaal2c.Expression expr> (. uppaal2c.Expression arg1 = null, arg2 = null; .)
+= 
+	LogAndExpr<out arg1>		(. expr = arg1; .)
+	[ "||"	LogAndExpr<out arg2> (. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.LogicalOr, arg1, arg2); .)
+	]
+.
+
+LogAndExpr <out uppaal2c.Expression expr> (. uppaal2c.Expression arg1 = null, arg2 = null; .)
+= (
+	BitExpr<out arg1>			(. expr = arg1; .)
+	[ "&&"	BitExpr<out arg2>	(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.LogicalAnd, arg1, arg2); .)
+	]
+  )
+.
+
+
+BitExpr<out uppaal2c.Expression expr> (. uppaal2c.Expression arg1 = null, arg2 = null; .)
+= 
+	  EqlExpr<out arg1>						    (. expr = arg1; .)
+	[
+	  '&'	EqlExpr<out arg2>	(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.BitAnd, arg1, arg2); .)
+	| '^'	EqlExpr<out arg2>	(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.BitXor, arg1, arg2); .)
+	| '|'	EqlExpr<out arg2>	(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.BitOr, arg1, arg2); .)
+	]
+.
+
+EqlExpr<out uppaal2c.Expression expr> (. uppaal2c.Expression arg1 = null, arg2 = null; .)
+= 	  RelExpr<out arg1>							    (. expr = arg1; .)
+	[
+	  "=="	RelExpr<out arg2>	(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.Equal, arg1, arg2); .)
+	| "!="	RelExpr<out arg2>	(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.NotEqual, arg1, arg2); .)
+	]
+.
+
+RelExpr<out uppaal2c.Expression expr> (. uppaal2c.Expression arg1 = null, arg2 = null; .)
+  =
+      MinMaxExpr<out arg1>									(. expr = arg1; .)
+	[
+	  '>'		MinMaxExpr<out arg2>	(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.Larger, arg1, arg2); .)
+	| ">="		MinMaxExpr<out arg2>	(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.LargerEqual, arg1, arg2); .)
+	| '<'		MinMaxExpr<out arg2>	(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.Smaller, arg1, arg2); .)
+	| "<="		MinMaxExpr<out arg2>	(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.SmallEqual, arg1, arg2); .)
+	]
+.
+
+MinMaxExpr<out uppaal2c.Expression expr> (. uppaal2c.Expression arg1 = null, arg2 = null; .)
+   = AddExpr<out arg1>						(. expr = arg1; .)
+     [
+	   "<?" AddExpr<out arg2> (. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.Min, arg1, arg2); .)
+	 | ">?" AddExpr<out arg2> (. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.Max, arg1, arg2); .)
+	 ]
+.
+
+AddExpr<out uppaal2c.Expression expr> (. uppaal2c.Expression arg1 = null, arg2 = null; .)
+   = MultExpr<out arg1>                        (. expr = arg1; .)
+	[
+       '+' MultExpr<out arg2> (. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.BinPlus, arg1, arg2); .)
+	 | '-' MultExpr<out arg2> (. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.BinMinus, arg1, arg2); .)
+	]
+.
+
+MultExpr<out uppaal2c.Expression expr> (. uppaal2c.Expression arg1 = null, arg2 = null; .)
+   =  UnaryExpr<out arg1>	   (. expr = arg1; .)
+     [
+	     '*' UnaryExpr<out arg2> (. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.Multi, arg1, arg2); .)
+       | '/' UnaryExpr<out arg2> (. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.Divide, arg1, arg2); .)
+	   | '%' UnaryExpr<out arg2> (. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.Modulus, arg1, arg2); .)
+	 ]
+.
+
+UnaryExpr<out uppaal2c.Expression expr> (. uppaal2c.Expression arg1 = null; expr = null; .)
+ =
+  ( PostfixExpr<out arg1>			(. expr = arg1; .)
+	| '+' PostfixExpr<out arg1>		(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.UniPlus, arg1, null); .)
+	| '-' PostfixExpr<out arg1>		(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.UniMinus, arg1, null); .)
+	| "++" PostfixExpr<out arg1>		(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.UniPlusPlusPre, arg1, null); .)
+	| "--" PostfixExpr<out arg1>		(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.UniMinusMinusPre, arg1, null); .)
+	| '!' UnaryExpr<out arg1>		(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.LogicalNot, arg1, null); .)
+  ).
+
+
+PostfixExpr<out uppaal2c.Expression expr> (. uppaal2c.Expression arg1 = null, arg2 = null; .)
+=
+  Primary<out arg1>							(. expr = arg1; .)
+  [
+    '[' Expression<out arg2> ']'			(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.ArrayIndex, arg1, arg2); .)
+  | '('									 (. List<uppaal2c.Expression> funcArgs = new List<uppaal2c.Expression>(); .)
+		[ 
+		    Expression<out arg2>		 (. funcArgs.Add(arg2); .)
+			{ ',' Expression<out arg2> } (. funcArgs.Add(arg2); .)
+		  
+        ] 
+	')'										(. expr = uppaal2c.Expression.CreateCustomFunc(arg1, funcArgs); .)							
+  | "++"									(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.UniPlusPlusPost, arg1, null); .)
+  | "--"									(. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.UniMinusMinusPost, arg1, null); .)
+  ].
+
+Primary<out uppaal2c.Expression expr> (. uppaal2c.Expression arg1 = null; expr = null; .)
+ = (
+	  ident (. expr = new uppaal2c.Expression(t.val); .)
+	  | number (. expr = new uppaal2c.Expression(Int32.Parse(t.val)); .)
+	  | hexnumber (. expr = new uppaal2c.Expression(Int32.Parse(t.val, NumberStyles.HexNumber)); .)
+	  | false (. expr = new uppaal2c.Expression(false); .)
+	  | true  (. expr = new uppaal2c.Expression(true); .)
+	  | '(' Expression<out arg1> ')' (. expr = arg1; .)
+	)
+.
+
+ChanPriorityDecl  (. uppaal2c.Expression expr = null; .)
+  = (
+			(   ChanExpr<out expr> (. decls.setChannelPriority(expr); .)
+			  | "default"		   (. decls.setChannelDefaultPriority(); .)
+			  )   
+			{ 
+				(    ',' 
+				  |  '<'             (. decls.nextChannelPriority(); .)
+				)
+				(ChanExpr<out expr>  (. decls.setChannelPriority(expr); .)
+				 | "default"		 (. decls.setChannelDefaultPriority(); .)
+				)
+			}
+    )
+.
+
+ChanExpr <out uppaal2c.Expression expr> (. uppaal2c.Expression arg1 = null, arg2 = null; .)
+  = (
+		Primary<out arg1> (. expr = arg1; .)
+		[
+			'[' Expression<out arg2> ']' (. expr = new uppaal2c.Expression(uppaal2c.Expression.Funcs.ArrayIndex, arg1, arg2); .)
+		]
+   )
+.
+
+Ident<out string value>
+= ident                  (. value = t.val; .)
+.
+
+END UPPAALDECL.
+
