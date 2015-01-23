@@ -612,7 +612,7 @@ namespace uppaal2c
             app("\t// uncomment and edit required hardware outputs");
             foreach (var s in ca.getDirOnlyChannels(SyncRule.Direction.Send))
             {
-                app("\t//u2c_set_channel_action({0}, /*fill pin here*/, /*U2C_SendChannelMode...*/, 0 /* or pulse time */);", s);
+                app("\t//u2c_set_channel_output({0}, /*fill pin here*/, /*U2C_SendChannelMode...*/, 0 /* or pulse time */);", s);
             }
             app("}}");
             app();
