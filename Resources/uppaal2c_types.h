@@ -1,4 +1,4 @@
-// VERSION: 1
+// VERSION: 2
 /*
 *  UPPAAAL2C (c) 2014 Ariel Eizenberg - arieleiz@seas.upenn.edu.
 *

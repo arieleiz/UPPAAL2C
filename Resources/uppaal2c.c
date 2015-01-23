@@ -1,4 +1,4 @@
-// VERSION: 1
+// VERSION: 2
 /*
 *  UPPAAAL2C (c) 2014 Ariel Eizenberg - arieleiz@seas.upenn.edu.
 *
@@ -13,6 +13,9 @@
 #include "uppaal2c_types.h"
 #include "uppaal2c_private.h"
 #include "model.h"
+#ifdef DISPATCH_DEBUG
+#include <stdarg.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,7 +26,7 @@ extern "C" {
 #endif
 
 #ifdef DISPATCH_DEBUG
-#define TRACE(str)	do { if(DISPATCHER._dbgout != NULL) {DISPATCHER._dbglock->lock(); DISPATCHER._dbgout->printf str ; DISPATCHER._dbglock->unlock(); } } while(0)
+#define TRACE(str)	_u2c_debug_trace str
 #else
 #define TRACE(str)	do {} while(0)
 #endif
@@ -56,11 +59,19 @@ static int u2c_sub_time(int timecur, int timeprev);
 static int u2c_wall_add(int timespan);
 static int u2c_wall_diff(int timeprev);
 
+#ifdef DISPATCH_DEBUG
+static void _u2c_debug_trace(const char* msg, ...);
+#endif
+
 //////////////////////
 
 void u2c_init()
 {
 	int i, j;
+
+#ifdef DISPATCH_DEBUG
+	u2c_platform_mutex_init(&DISPATCHER._dbglock);
+#endif
 
 	DISPATCHER._cnt_proc = 0;
 	DISPATCHER._tick = 0;
@@ -89,20 +100,6 @@ void u2c_set_clock_multiplier(int multiplier)
 {
 	DISPATCHER._clock_multiplier = multiplier;
 }
-
-#ifdef DISPATCH_DEBUG
-#ifdef DISPATCH_DEBUG
-void u2c_init_debug(debug_print_cb_t cb);
-#endif
-
-void u2c_init_debug(Serial* serial, Mutex* dbgmutex)
-{
-	_dbgout = serial;
-	_dbglock = dbgmutex;
-	TRACE(("Dispatcher initializing.\r\n"));
-}
-#endif
-
 
 void u2c_add_task(U2C_TASK* ps)
 {
@@ -145,6 +142,8 @@ static void u2c_fire_channel_pulse_cb(void* context)
 
 void u2c_fire_channel(U2C_CHANNEL* channel)
 {
+	TRACE(("[CHANNEL:%s] Channel Fired\r\n", channel->data->name));
+
 	channel->cur_fired = U2C_TRUE;
 	for (int i = 0; i < U2C_MAX_SEND_DATA; ++i)
 	{
@@ -194,13 +193,14 @@ void u2c_set_channel_output(U2C_CHANNEL* channel, PinName pin, U2C_SendChannelMo
 	for (int i = 0; i < U2C_MAX_SEND_DATA; ++i)
 	{
 		U2C_SENDDATA* sd = &channel->send[i];
-		if (sd->pin != NC && sd->pin != pin)
-			continue;
-
-		u2c_platform_gpio_init_out(&sd->gpio, pin);
-		sd->mode = mode;
-		sd->pulse_length_us = pulse_length_us;
-		sd->pin = pin;
+		if (sd->pin == NC || sd->pin == pin)
+		{
+			u2c_platform_gpio_init_out(&sd->gpio, pin);
+			sd->mode = mode;
+			sd->pulse_length_us = pulse_length_us;
+			sd->pin = pin;
+			break;
+		}
 	}
 }
 
@@ -273,7 +273,7 @@ void u2c_run_steps()
 {
 	u2c_platform_time_t now = u2c_platform_read_usec();
 #ifdef DISPATCH_DEBUG
-	int tick_before = get_tick();
+	int tick_before = _U2C_GET_TICK();
 #endif
 	TRACE(("u2c_run_steps(): starting, now=%i.\r\n", now));
 
@@ -294,7 +294,7 @@ void u2c_run_steps()
 
 	u2c_run_tasks(U2C_StateUrgent);
 
-	TRACE(("Dispatcher wait end (diff=%i, tdiff=%i).\r\n", u2c_platform_diff_now(now), get_tick() - tick_before));
+	TRACE(("Dispatcher wait end (dt=%i t=%i).\r\n", _U2C_GET_TICK() - tick_before, _U2C_GET_TICK()));
 }
 
 void u2c_clear_signals()
@@ -566,6 +566,91 @@ void u2c_leave_state(volatile U2C_TASK* process, U2C_STATENODE* state)
 	if (state->state_leave != NULL)
 		state->state_leave(state);
 }
+
+#ifdef DISPATCH_DEBUG
+static void _u2c_debug_trace(const char* msg, ...)
+{
+	static const char NUMTABLE[] = "0123456789ABCDEF";
+	u2c_platform_mutex_lock(&DISPATCHER._dbglock);
+	va_list ap;
+	char c, s[32], *p;
+	int x, b, sgn = 1;
+	unsigned u;
+
+	va_start(ap, msg);
+
+	for(;;)
+	{
+		c = *msg ++;
+		if (c == 0) 
+			break;
+		if (c != '%')
+		{
+			u2c_platform_debug_putc(c);
+			continue;
+		}
+		c = *msg++;
+		if (c == 0)
+			break;
+		if (c == '%')
+		{
+			u2c_platform_debug_putc(c);
+			continue;
+		}
+
+		switch (c)
+		{
+		case 's':
+			for (p = va_arg(ap, char*); *p; ++p)
+				u2c_platform_debug_putc(*p);
+			continue;
+		case 'c':
+			u2c_platform_debug_putc((char)va_arg(ap, int));
+			continue;
+		case 'b': b = 2; break;
+		case 'o': b = 8; break;
+		case 'd': b = 10; break;
+		case 'i': b = 10; break;
+		case 'u': b = 10; sgn = 0;  break;
+		case 'x': b = 16; sgn = 0;  break;
+		default:  u2c_platform_debug_putc(c); continue;
+		}
+
+		if (sgn)
+		{
+			x = va_arg(ap, int);
+			if (x < 0)
+			{
+				u = -x;
+				u2c_platform_debug_putc('-');
+			}
+			else
+				u = x;
+		}
+		else
+			x = va_arg(ap, unsigned int);
+
+		if (x == 0)
+		{
+			u2c_platform_debug_putc(0);
+			continue;
+		}
+		p = &s[sizeof(s)];
+		while (x != 0 && p > s)
+		{
+			--p;
+			*p = NUMTABLE[x % b];
+			x = x / b;
+		}
+		for (; p < &s[sizeof(s)]; ++p)
+			u2c_platform_debug_putc(*p);
+	}
+
+	va_end(ap);
+	u2c_platform_mutex_unlock(&DISPATCHER._dbglock);
+}
+
+#endif
 
 #ifdef __cplusplus
 }

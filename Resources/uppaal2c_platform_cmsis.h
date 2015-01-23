@@ -1,4 +1,4 @@
-// VERSION: 1
+// VERSION: 2
 /*
 *  UPPAAAL2C (c) 2014 Ariel Eizenberg - arieleiz@seas.upenn.edu.
 *
@@ -18,6 +18,7 @@ extern "C" {
 #include "gpio_api.h"
 #include "gpio_irq_api.h"
 #include "us_ticker_api.h"
+#include "serial_api.h"
 
 #define MBED_USE_MACROS
 
@@ -27,7 +28,13 @@ typedef int U2C_BOOL;
 #define U2C_FALSE 0
 
 // trace
-#define U2C_TRACE(msg) do { } while(0)
+#ifdef DISPATCH_DEBUG
+extern serial_t U2C_PLATFORM_DEBUG_SERIAL;
+void u2c_platform_debug_init(PinName tx, PinName rx);
+#define u2c_platform_debug_putc(c) serial_putc(&U2C_PLATFORM_DEBUG_SERIAL, c)
+#else
+#define u2c_platform_debug_init(tx, rx) do { } while(0)
+#endif
 
 // gpio
 typedef enum PinName U2C_PLATFORM_PIN_NAME;
@@ -76,6 +83,7 @@ U2C_BOOL u2c_platform_mutex_trylock(U2C_PLATFORM_MUTEX* mutex);
 U2C_BOOL u2c_platform_mutex_unlock(U2C_PLATFORM_MUTEX* mutex);
 #endif
 void u2c_platform_mutex_destroy(U2C_PLATFORM_MUTEX* mutex);
+
 
 // time
 typedef uint32_t u2c_platform_time_t;

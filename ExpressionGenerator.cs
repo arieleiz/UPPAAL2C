@@ -55,7 +55,8 @@ namespace uppaal2c
                 vname = _namer(vd);
             }
 
-            return String.Format("{0}.{1} = ({2});",
+            return String.Format("{0}({1}.{2}, ({3}));",
+                    getSetter(vd),
                     _stateStructName,
                     vname,
                     generate(ur.Expr));
@@ -82,6 +83,21 @@ namespace uppaal2c
                     return "_U2C_GET_CLK";
                 case VarType.Int:
                     return "_U2C_GET_INT";
+                default:
+                    throw new CodeGenException("Unknown variable type!");
+            }
+        }
+
+        private string getSetter(VarDecl vd)
+        {
+            switch (vd.Type.Type)
+            {
+                case VarType.Channel:
+                    throw new CodeGenException("Channels cannot be used as variables!");
+                case VarType.Clock:
+                    return "_U2C_SET_CLK";
+                case VarType.Int:
+                    return "_U2C_SET_INT";
                 default:
                     throw new CodeGenException("Unknown variable type!");
             }

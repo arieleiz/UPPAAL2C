@@ -1,4 +1,4 @@
-// VERSION: 1
+// VERSION: 2
 /*
 *  UPPAAAL2C (c) 2014 Ariel Eizenberg - arieleiz@seas.upenn.edu.
 *
@@ -24,6 +24,9 @@ extern "C" {
 #define _U2C_GET_CLK(clk)			(_U2C_GET_TICK() - (clk))
 #define _U2C_SET_CLK(clk, value)	do { clk = _U2C_GET_TICK() - value; } while(0)
 
+#define _U2C_GET_INT(x) x
+#define _U2C_SET_INT(x, v) do { x = (v); } while(0)
+
 typedef struct {
 	int					   _cnt_proc;
 	U2C_PLATFORM_MUTEX     _lock;
@@ -32,6 +35,11 @@ typedef struct {
 
 	int						_clock_multiplier;
 	int						_tick;
+
+#ifdef DISPATCH_DEBUG
+	U2C_PLATFORM_MUTEX     _dbglock;
+#endif
+
 } U2C_DISPATCHER_STATE;
 
 extern U2C_DISPATCHER_STATE DISPATCHER;

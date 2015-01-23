@@ -1,4 +1,4 @@
-// VERSION: 1
+// VERSION: 2
 #include "uppaal2c_platform.h"
 #include "uppaal2c.h"
 #include <cmsis_os.h>
@@ -157,4 +157,12 @@ U2C_BOOL u2c_platform_thread_create(u2c_thread_entry_cb_t entry, void* ctx, U2C_
 	return (*out_id) != NULL;
 }
 
+#ifdef DISPATCH_DEBUG
+serial_t U2C_PLATFORM_DEBUG_SERIAL;
 
+void u2c_platform_debug_init(PinName tx, PinName rx)
+{
+	serial_init(&U2C_PLATFORM_DEBUG_SERIAL, tx, rx); 
+}
+
+#endif

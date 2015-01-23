@@ -582,6 +582,7 @@ namespace uppaal2c
             app();
             app("int main (void)"); 
             app("{{");
+            app("\tu2c_init();");
             app("\tu2c_set_clock_multiplier(1000 /*us*/);");
             app();
             app("\tinit_inputs();");
