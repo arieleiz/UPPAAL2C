@@ -51,6 +51,7 @@ namespace uppaal2c
             if(_isSource)
             {
                 app("#include \"model.h\"");
+                app("#include \"uppaal2c_private.h\"");
             }
             else
             {
@@ -82,13 +83,12 @@ namespace uppaal2c
                 FormatTemplate(t);
             }
 
+            FormatTemplateList();
+
             app();
             app("#ifdef __cplusplus");
             app("}} // extern \"C\" ");
             app("#endif");
-
-
-            FormatTemplateList();
 
             writeOutput(path);
         }
@@ -107,16 +107,39 @@ namespace uppaal2c
             if (_isSource)
             {
                 app("// ChannelsList");
-                app("SYNCHRONIZATION_CHANNEL* ALL_CHANNELS[] = ");
+                app("U2C_CHANNEL* ALL_CHANNELS[TOTAL_CHANNEL_COUNT] = ");
                 app("    {{");
                 FormatTemplateChannelList(_model.Declarations);
                 foreach (Template t in _model.Templates)
                 {
                     FormatTemplateChannelList(t.Declarations);
                 }
-                app("        NULL");
                 app("    }};");
                 app();
+            }
+            else
+            {
+                int count = 0;
+                countChannels(_model.Declarations, ref count);
+                foreach (Template t in _model.Templates)
+                {
+                    countChannels(t.Declarations, ref count);
+                }
+
+                app("#define TOTAL_CHANNEL_COUNT {0}", count);
+                app("extern U2C_CHANNEL* ALL_CHANNELS[TOTAL_CHANNEL_COUNT];");
+
+            }
+        }
+
+        private void countChannels(Declarations d, ref int sum)
+        {
+            foreach (var v in d.getVarsByType(VarType.Channel))
+            {
+                if (v.IsArray)
+                    sum += v.ArrLength;
+                else
+                    sum += 1;
             }
         }
 
@@ -145,7 +168,7 @@ namespace uppaal2c
                 if (_isSource)
                 {
                     app();
-                    app("U2C_SYNCHRONIZATION_CHANNEL* const {0}_ARRAY[] = ", name);
+                    app("U2C_CHANNEL* const {0}_ARRAY[] = ", name);
                     app("    {{");
                     for (int i = v.ArrLow; i < (v.ArrLow + v.ArrLength); ++i)
                         app("        &{0}{1},", name, String.Format("_{0}", i));
@@ -162,27 +185,26 @@ namespace uppaal2c
         {
             if(_isSource)
             {
-	            app("SYNCHRONIZATION_CHANNEL_STATE {0}{1}_STATE; // {2}", name, postfix, v.NiceName());
-                app();
-                app("const SYNCHRONIZATION_CHANNEL_DATA {0}{1}_DATA = // {2}", name, postfix, v.NiceName());
+                app("const U2C_CHANNEL_DATA {0}{1}_DATA = // {2}", name, postfix, v.NiceName());
 	            app("    {{");
 		        app("        DBG_FIELD(\"{0}[{1}]\")	// name", v.NiceName(), postfix.TrimStart('_'));
 		        app("        {0},				// urgent", formatBool(v.Type.Urgent));
 		        app("        {0},				// broadcast", formatBool(v.Type.Broadcast));
-                app("        &{0},              // state", String.Format("{0}{1}_STATE", name, postfix));
 	            app("    }};");
                 app();
-                app("SYNCHRONIZATION_CHANNEL {0}{1} = // {2}", name, postfix, v.NiceName());
+                app("U2C_CHANNEL {0}{1} = // {2}", name, postfix, v.NiceName());
                 app("    {{");
                 app("        &{0}{1}_DATA,         // data",  name, postfix);
-                app("        NULL,              // fired");
+                app("        NULL,              // firedcb");
                 app("        NULL,              // context");
-	            app("    }};");
+                app("        U2C_FALSE,              // cur_fired");
+                app("        U2C_FALSE,              // prev_fired");
+                app("    }};");
                 app();
             }
             else 
             {
-                app("extern U2C_SYNCHRONIZATION_CHANNEL {0}{1}; // {2}", name, postfix, v.NiceName());
+                app("extern U2C_CHANNEL {0}{1}; // {2}", name, postfix, v.NiceName());
             }
         }
 
@@ -197,7 +219,7 @@ namespace uppaal2c
         {
             foreach (VarDecl vd in decl.getVarsByType(VarType.Clock))
             {
-                FormatSingleVarDeclaration("clk", prefix, vd);
+                FormatSingleVarDeclaration("u2c_clk_t", prefix, vd);
             }
             foreach (VarDecl vd in decl.getVarsByType(VarType.Int))
             {
@@ -215,7 +237,7 @@ namespace uppaal2c
             if (!decl.getExprValue(vd.Expr, out val))
                 throw new CodeGenException(String.Format("Cannot use non const variable!"));
 
-            app("        {0}({1}),", name, val);
+            app("\t{0}.{1} = {2};", StateStructName, name, val); 
         }
 
         private void FormatDeclarationsInitialization(Declarations decl)
@@ -242,36 +264,32 @@ namespace uppaal2c
         {
             if (_isSource)
             {
-                app("SYSTEM_VARIABLES {0};", StateStructName);
+                app("U2C_SYSTEM_STATE {0};", StateStructName);
                 app();
-            }
-            else
-            {
-                app("struct SYSTEM_VARIABLES");
-                app("    {{");
-                FormatDeclarations("GLOBAL", _model.Declarations);
-                foreach (Template t in _model.Templates)
-                {
-                    FormatDeclarations(t.Name, t.Declarations);
-                }
-                app("         int __unused__;");
-
-                app("       public:  SYSTEM_VARIABLES() :");
+                app("void init_system_variables() {{");
                 FormatDeclarationsInitialization(_model.Declarations);
                 foreach (Template t in _model.Templates)
                 {
                     FormatDeclarationsInitialization(t.Declarations);
                 }
-                app(" __unused__(0){{");
                 app("}}");
-
-                app("       private: SYSTEM_VARIABLES(const SYSTEM_VARIABLES& other);");
-                app("       private: SYSTEM_VARIABLES& operator=(const SYSTEM_VARIABLES& other);");
-                app("    }};");
-                app();
-                app("extern SYSTEM_VARIABLES {0};", StateStructName);
                 app();
             }
+            else
+            {
+                app("typedef struct {{");
+                FormatDeclarations("GLOBAL", _model.Declarations);
+                foreach (Template t in _model.Templates)
+                {
+                    FormatDeclarations(t.Name, t.Declarations);
+                }
+                app("}} U2C_SYSTEM_STATE;");
+                app();
+                app("extern U2C_SYSTEM_STATE {0};", StateStructName);
+                app();
+            }
+
+        
         }
 
         private void FormatTemplate(Template t)
@@ -294,7 +312,7 @@ namespace uppaal2c
 
             string funcname = String.Format("guardfunc_{0}", objname);
             ExpressionGenerator eg = new ExpressionGenerator(getUniqueName, decls, StateStructName);
-            app("static bool {0}()", funcname);
+            app("static U2C_BOOL {0}()", funcname);
             app("{{");
             app("    {0}", eg.generate(guard));
             app("}};");
@@ -326,7 +344,7 @@ namespace uppaal2c
                 string guard_name = FormatGuardFunction(name, t.Declarations, st.Rules);
                 string update_name = FormatUpdateFunction(name, t.Declarations ,st.Rules);
 
-                app("const TRANSITION_ENTRY_DATA {0}_DATA =", name);
+                app("const U2C_TRANSITION_DATA {0}_DATA =", name);
                 app("    {{");
                 app("        DBG_FIELD(\"{0}\")	// name", st.Name);
                 app("        &{0},				// target", getUniqueName(st.Target));
@@ -336,18 +354,17 @@ namespace uppaal2c
                 app("        {0},               // update", (update_name != null) ? update_name : NULL);
                 app("    }};");
                 app();
-                app("TRANSITION_ENTRY {0} =", name);
+                app("U2C_TRANSITION {0} =", name);
                 app("    {{");
                 app("        &{0}_DATA,         // data", name);
-                app("        NULL,              // transition_pre_execute");
-                app("        NULL,              // transition_post_execute");
+                app("        NULL,              // transition_execute_cb");
                 app("        NULL,              // context");
                 app("    }};");
                 app();
             }
             else
             {
-                app("extern U2C_TRANSITION_ENTRY {0};", name);
+                app("extern U2C_TRANSITION {0};", name);
             }
         }
 
@@ -360,7 +377,7 @@ namespace uppaal2c
             {
                 string guard_name = FormatGuardFunction(name, t.Declarations, sn.Rules);
 
-                app("const TRANSITION_ENTRY* {0}_OUT[] = ", name);
+                app("const U2C_TRANSITION* {0}_OUT[] = ", name);
                 app("    {{");
                 foreach(StateTransition st in t.Transitions.Where(x => x.Source == sn))
                 {
@@ -370,15 +387,15 @@ namespace uppaal2c
                 app("    }};");
                 app();
 
-                app("const STATE_ENTRY_DATA {0}_DATA =", name);
+                app("const U2C_STATENODE_DATA {0}_DATA =", name);
                 app("    {{");
                 app("        DBG_FIELD(\"{0}\")	// name", sn.Name);
-                app("        (TRANSITION_ENTRY* const*)&{0}_OUT,	// target", name);
+                app("        (U2C_TRANSITION* const*)&{0}_OUT,	// target", name);
                 app("        {0}, // mode", getModeString(sn));
                 app("        {0}, // guard", guard_name);
                 app("    }};");
                 app();
-                app("STATE_ENTRY {0} =", name);
+                app("U2C_STATENODE {0} =", name);
                 app("    {{");
                 app("        &{0}_DATA,         // data", name);
                 app("        NULL,              // state_enter");
@@ -389,62 +406,37 @@ namespace uppaal2c
             }
             else
             {
-                app("extern U2C_STATE_ENTRY {0};", name);
+                app("extern U2C_STATENODE {0};", name);
             }
         }
 
         private void FormatProcess(Template t)
         {
-            string name = setUniqueName(t, String.Format("{0}_PROCESS", t.Name));
+            string name = setUniqueName(t, String.Format("{0}_TASK", t.Name));
             if (_isSource)
             {
-                /*app("STATE_ENTRY* const {0}_STATE_TBL[] = ", name);
-                app("    {{");
-                foreach(StateNode sn in t.Nodes)
-                {
-                    app("        &{0}, // {1}", getUniqueName(sn), sn.Name);
-                }
-                app("    NULL");
-                app("    }};");
-                app();*/
-
-                app("extern PROCESS_ENTRY_STATE {0}_STATE;", name);
-                app();
-                app("PROCESS_ENTRY_THREAD {0}_THREAD(&{0}_STATE);", name);
-                app();
-
-                app("const PROCESS_ENTRY_DATA {0}_DATA = ", name);
+                app("const U2C_TASK_DATA {0}_DATA = ", name);
                 app("    {{");
                 app("        DBG_FIELD(\"{0}\")	// name", name);
                 //app("        (STATE_ENTRY* const*)&{0}_STATE_TBL,	// states", name);
                 app("        &{0}, // initState", getUniqueName(t.Initial));
-                app("        &{0}_THREAD, // threadptr", name);
                 app("    }};");
                 app();
-                app("PROCESS_ENTRY {0} = ", name);
+                app("U2C_TASK {0} = ", name);
                 app("    {{");
                 app("        &{0}_DATA,         // data", name);
                 app("        NULL,              // process_start");
                 app("        NULL,              // context");
-                app("    }};");
-                app();
-                app("PROCESS_ENTRY_STATE {0}_STATE = ", name);
-                app("    {{");
-                app("        &{0},         // process", name);
-                app("        &{0}_THREAD,  // thread", name);
-                app("        &{0}_DATA,    // data", name);
-                app("        NULL,              // current");
-                app("        NULL,              // next");
-                app("        false,              // stepped");
-                app("        false,              // normal_stepped");
-                app("        ProcessInit,        // state");
+                app("        &{0},              // current", getUniqueName(t.Initial));
+                app("        U2C_FALSE,              // stepped");
+                app("        U2C_FALSE,              // normal_stepped");
+                app("        U2C_ProcessInit,        // state");
                 app("    }};");
                 app();
             }
             else
             {
-                app("extern U2C_PROCESS_ENTRY {0};", name);
-                app("extern U2C_PROCESS_ENTRY_STATE {0}_STATE;", name);
+                app("extern U2C_TASK {0};", name);
                 app();
             }
         }
@@ -453,15 +445,19 @@ namespace uppaal2c
         {
             if (_isSource)
             {
-                int cnt = _model.Templates.Length;
-                app("volatile PROCESS_ENTRY_STATE* U2C_PROCESS_LIST[] =");
+                app("U2C_TASK* U2C_TASK_LIST[{0}] =", _model.Templates.Length);
                 app("{{");
-                for(int i = 0; i < cnt; ++ i)
+                for (int i = 0; i < _model.Templates.Length; ++i)
                     app("   NULL,");
-                app("    NULL");
                 app("}};");
                 app();
-                app("int MAX_PROCESS_LIST = {0};", cnt);
+                app();
+            }
+            else
+            {
+                app();
+                app("#define U2C_TOTAL_TASK_COUNT {0}", _model.Templates.Length);
+                app("extern U2C_TASK* U2C_TASK_LIST[U2C_TOTAL_TASK_COUNT];");
                 app();
             }
         }
@@ -475,6 +471,12 @@ namespace uppaal2c
                 return NULL;
             if(r.Dir != dir)
                 return NULL;
+
+            return getSyncChannelCode(getUniqueName, t, r);
+        }
+
+        public static string getSyncChannelCode(GetNameDelegate getname, Template t, SyncRule r)
+        {
             VarDecl vd;
             switch (r.Expr.Type)
             {
@@ -485,19 +487,26 @@ namespace uppaal2c
                     if(r.Expr.First.Type != Expression.ExpType.Var)
                         throw new CodeGenException("Synchronization rule must be a channel!");
                     int idx;
-                    if(!t.Declarations.getExprValue(r.Expr.Second, out idx))
-                        throw new CodeGenException("Channel array index must be a constant!");
-                    vd  = t.Declarations.getVar(r.Expr.First.Var);
-                    if(vd == null || vd.Type.Type != VarType.Channel)
-                        throw new CodeGenException(String.Format("Could not find '{0}' in declarations for template '{1}' or globally!", r.Expr.First.Var, t.Name));
-                    return String.Format("{0}_ARRAY[{1}]", getUniqueName(vd), idx - vd.ArrLow);
+                    if (t.Declarations.getExprValue(r.Expr.Second, out idx))
+                    {
+                        vd = t.Declarations.getVar(r.Expr.First.Var);
+                        if (vd == null || vd.Type.Type != VarType.Channel)
+                            throw new CodeGenException(String.Format("Could not find '{0}' in declarations for template '{1}' or GLOBALly!", r.Expr.First.Var, t.Name));
+                        return String.Format("{0}_ARRAY[{1}]", getname(vd), idx - vd.ArrLow);
+                    }
+                    else
+                    {
+                        // add support for this later
+                        throw new CodeGenException("Channel array index must be a constant, dynamic channel index not yet support (but will be)!");
 
+                    }
+                    
                 case Expression.ExpType.Var:
                     vd  = t.Declarations.getVar(r.Expr.Var);
                     if(vd == null || vd.Type.Type != VarType.Channel)
-                        throw new CodeGenException(String.Format("Could not find '{0}' in declarations for template '{1}' or globally!", r.Expr.Var, t.Name));
+                        throw new CodeGenException(String.Format("Could not find '{0}' in declarations for template '{1}' or GLOBALly!", r.Expr.Var, t.Name));
 
-                    return String.Format("&{0}", getUniqueName(vd));
+                    return String.Format("&{0}", getname(vd));
 
                 default:
                     throw new CodeGenException("Synchronization rule must be a channel");
@@ -506,7 +515,7 @@ namespace uppaal2c
 
         private static string formatBool(bool b)
         {
-            return b ? "true" : "false";
+            return b ? "U2C_TRUE" : "U2C_FALSE";
         }
 
         private static string getModeString(StateNode sn)
@@ -514,11 +523,11 @@ namespace uppaal2c
             switch (sn.Mode)
             {
                 case NodeMode.Regular:
-                    return "StateNormal";
+                    return "U2C_StateNormal";
                 case NodeMode.Urgent:
-                    return "StateUrgent";
+                    return "U2C_StateUrgent";
                 case NodeMode.Commited:
-                    return "StateCommited";
+                    return "U2C_StateCommited";
             }
             throw new CodeGenException("Unknown mode!");
         }
@@ -560,14 +569,16 @@ namespace uppaal2c
 
         private void createMainFile(string outpath)
         {
+            var ca = new ChannelAnalyzer(_model, getUniqueName);
+
             _sb = new StringBuilder();
-            app("#include \"uppal2c.h\"");
+            app("#include \"uppaal2c.h\"");
             app("#include \"model.h\"");
             app();
+            app("static void init_tasks();");
             app("static void init_inputs();");
             app("static void init_outputs();");
             app("static void init_callbacks();");
-            app("static void init_tasks();");
             app();
             app("int main (void)"); 
             app("{{");
@@ -581,31 +592,53 @@ namespace uppaal2c
             app();
             app("}}");
             app();
+            app("static void init_tasks()");
+            app("{{");
+            foreach (Template t in _model.Templates)
+                app("\tu2c_add_task(&{0});", getUniqueName(t));
+            app("}}");
+            app();
             app("static void init_inputs()");
             app("{{");
             app("\t// uncomment and edit required hardware inputs");
-            app("\t//u2c_set_receive_input(GLOBAL_CHANNEL_VAR_m_BolusReq, p9, PullUp, U2C_ReceiveChannelInterruptRise);");
+            foreach (var s in ca.getDirOnlyChannels(SyncRule.Direction.Receive))
+            {
+                app("\t//u2c_set_channel_input({0}, /*fill pin here*/, /*fill mode here*/, /*U2C_ReceiveChannel...*/);", s);
+            }
             app("}}");
             app();
             app("static void init_outputs()");
             app("{{");
             app("\t// uncomment and edit required hardware outputs");
-            app("\t//u2c_set_channel_action(GLOBAL_CHANNEL_VAR_c_StartBolus, p5, U2C_SendChannelModePulseUp, 1000);");
+            foreach (var s in ca.getDirOnlyChannels(SyncRule.Direction.Send))
+            {
+                app("\t//u2c_set_channel_action({0}, /*fill pin here*/, /*U2C_SendChannelMode...*/, 0 /* or pulse time */);", s);
+            }
             app("}}");
             app();
             app("static void init_callbacks()");
             app("{{");
-            app("\t// uncomment and edit required process callbacks");
-            app("\t// uncomment and edit required state callbacks");
-//            app("\t//disp.set_state_enter_cb(&Model::pump_STATE_Alarming, blabla, NULL);
-            app("\t// uncomment and edit required transition callbacks");
+            foreach (var s in _model.Templates)
+            { 
+                app("\t// --- {0} ---", s.Name);
+                app("\t// === uncomment and edit required process callbacks ===");
+                app("\t//u2c_set_process_start_cb(&{0}, /*function*/, /*ctx*/);", getUniqueName(s));
+                app("\t// === uncomment and edit required state callbacks ===");
+                foreach (var sn in s.Nodes)
+                {
+                    app("\t//u2c_set_state_enter_cb(&{0}, /*function*/, /*ctx*/);", getUniqueName(sn));
+                    app("\t//u2c_set_state_leave_cb(&{0}, /*function*/, /*ctx*/);", getUniqueName(sn));
+                }
+                app("\t// == uncomment and edit required transition callbacks ===");
+                foreach (var sn in s.Transitions)
+                {
+                    app("\t//u2c_set_transition_execute_cb(&{0}, /*function*/, /*ctx*/);", getUniqueName(sn));
+                }
+            }
+
             app("}}");
             app();
-            app("static void init_tasks()");
-            app("{{");
-            app("\tu2c_add_task(U2C_TASK_OBJECT(pump));");
-            app("}}");
-            app();
+
 
             writeOutput(outpath);
         }
@@ -614,7 +647,7 @@ namespace uppaal2c
         private StringBuilder _sb;
         private bool _isSource;
         private Dictionary<object, string> _names = new Dictionary<object, string>();
-        const string StateStructName = "SystemVariables";
+        const string StateStructName = "U2C_StateVars";
     }
 }
 

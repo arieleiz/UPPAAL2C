@@ -57,6 +57,7 @@ namespace uppaal2c
                     Generator g = new Generator(m);
                     gensubdirs(args[1]);
                     g.generate(args[1]);
+                    TemplateExtractor.extract(args[1]);
                 }
                 else
                 {

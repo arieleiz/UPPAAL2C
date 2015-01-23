@@ -6,9 +6,9 @@ using System.Runtime.InteropServices;
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
 [assembly: AssemblyTitle("uppaal2c")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyDescription("UPPAAL C code generator")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("")]
+[assembly: AssemblyCompany("Ariel Eizenberg")]
 [assembly: AssemblyProduct("uppaal2c")]
 [assembly: AssemblyCopyright("Copyright ©  2014")]
 [assembly: AssemblyTrademark("")]

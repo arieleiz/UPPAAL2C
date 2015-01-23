@@ -9,8 +9,9 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>uppaal2c</RootNamespace>
     <AssemblyName>uppaal2c</AssemblyName>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
+    <TargetFrameworkProfile>Client</TargetFrameworkProfile>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
@@ -41,6 +42,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ChannelAnalyzer.cs" />
     <Compile Include="ChannelPriority.cs" />
     <Compile Include="CodeGenException.cs" />
     <Compile Include="Declarations.cs" />
@@ -58,6 +60,12 @@
     <Compile Include="Template.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="TemplateExtractor.cs" />
+    <Compile Include="templates\Templates.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Templates.resx</DependentUpon>
+    </Compile>
     <Compile Include="TypeDecl.cs" />
     <Compile Include="TypedefDecl.cs" />
     <Compile Include="UPAALParser.cs" />
@@ -66,6 +74,34 @@
   <ItemGroup>
     <None Include="App.config" />
     <None Include="UPPAALDecls.ATG" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="templates\Templates.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Templates.Designer.cs</LastGenOutput>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\uppaal2c.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\uppaal2c.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\uppaal2c_platform.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\uppaal2c_platform_cmsis.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\uppaal2c_platform_cmsis.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\uppaal2c_private.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\uppaal2c_types.h" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

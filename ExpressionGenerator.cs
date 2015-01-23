@@ -15,6 +15,8 @@ using System.Threading.Tasks;
 
 namespace uppaal2c
 {
+    public delegate string GetNameDelegate(object o);
+
     class ExpressionGenerator
     {
         public ExpressionGenerator(GetNameDelegate namer, Declarations decls, string stateStructName)
@@ -23,8 +25,6 @@ namespace uppaal2c
             _decls = decls;
             _namer = namer;
         }
-
-        public delegate string GetNameDelegate(object o);
 
         public string generate(GuardRule gr)
         {
@@ -79,7 +79,7 @@ namespace uppaal2c
                 case VarType.Channel:
                     throw new CodeGenException("Channels cannot be used as variables!");
                 case VarType.Clock:
-                    return "_U2C_GET_CLOCK";
+                    return "_U2C_GET_CLK";
                 case VarType.Int:
                     return "_U2C_GET_INT";
                 default:
