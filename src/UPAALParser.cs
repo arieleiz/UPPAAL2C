@@ -264,7 +264,11 @@ namespace uppaal2c
             string expr = String.Format("chan _CHANNEL_ = {0};", rule);
             Declarations newdecls = parseDeclarations(expr, decls);
             Expression e = newdecls.getVar("_CHANNEL_").Expr;
-            e.fold(newdecls);
+            try
+            {
+                e.fold(newdecls);
+            }
+            catch (ParseException) {  /* ignore for now, we might resolve this later */}
             return new SyncRule(e, dir);
         }
 

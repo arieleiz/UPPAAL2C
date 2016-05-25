@@ -81,7 +81,7 @@ namespace uppaal2c
         {
             try
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                Directory.CreateDirectory(path);
             }
             catch
             {
